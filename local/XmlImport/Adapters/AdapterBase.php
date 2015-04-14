@@ -13,6 +13,6 @@ abstract class AdapterBase
 
     public function download()
     {
-
+        echo $this->url;
     }
 }
