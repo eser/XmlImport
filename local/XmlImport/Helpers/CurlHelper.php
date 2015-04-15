@@ -2,7 +2,8 @@
 
 namespace XmlImport\Helpers;
 
-class CurlHelper {
+class CurlHelper
+{
     public static function downloadFile($uUrl, $uFile = null)
     {
         if ($uFile === null) {
@@ -35,13 +36,14 @@ class CurlHelper {
 
                 // HTTP 5xx
                 if ($tLoop < 3 && ($tHttpStatus >= 500 && $tHttpStatus < 600)) {
-                    // try again
+                    // try again after 1 second delay
+                    usleep(1000000);
                     continue;
                 }
 
                 $tFailed = true;
             }
-            
+
             break;
         }
 

@@ -1,6 +1,6 @@
 <?php return [
     "database" => [
-       "host"     => "localhost",
+       "conn"     => "mysql:host=localhost;dbname=xmlimport",
        "username" => "root",
        "password" => ""
     ],
@@ -8,6 +8,7 @@
         [
             "class"  => "Vendor\\XmlAdapters\\Sample",
             "config" => [
+                "id" => 1,
                 "url" => "http://www.domain.com/path/filename.xml"
             ]
         ]

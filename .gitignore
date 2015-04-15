@@ -2,3 +2,4 @@
 /vendor/
 /local/Zaimoglu/
 /config.php
+/composer.lock

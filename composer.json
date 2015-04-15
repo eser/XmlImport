@@ -7,6 +7,6 @@
         }
     ],
     "require": {
-
+        "php-objects/query-builder": "dev-master"
     }
 }
