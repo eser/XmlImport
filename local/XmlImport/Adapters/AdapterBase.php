@@ -2,6 +2,8 @@
 
 namespace XmlImport\Adapters;
 
+use XmlImport\Helpers\CurlHelper;
+
 abstract class AdapterBase
 {
     public $url;
@@ -13,6 +15,7 @@ abstract class AdapterBase
 
     public function download()
     {
-        echo $this->url;
+        $tFile = CurlHelper::downloadFile($this->url);
+        echo $tFile;
     }
 }
