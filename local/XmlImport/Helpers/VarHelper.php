@@ -19,7 +19,7 @@ class VarHelper
             $tItems[] = static::htmlDecode(current($tItem));
         }
 
-        return json_encode($tItems);
+        return $tItems;
     }
 
     public static function htmlDecode($uString)

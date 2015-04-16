@@ -18,6 +18,7 @@ abstract class AdapterBase
     public $recordsAdded;
     public $recordsUpdated;
     public $recordsSkipped;
+    public $downloads;
 
     public function __construct(Runner $uRunner, $uConfig)
     {
@@ -33,7 +34,7 @@ abstract class AdapterBase
         echo "Adapter {$this->name} is starting..." . PHP_EOL;
 
         echo "- Downloading XML from {$this->url}" . PHP_EOL;
-        $tFile = $this->download();
+        $tFile = $this->downloadSource();
         if ($tFile === false) {
             // TODO throw error
             return false;
@@ -43,19 +44,42 @@ abstract class AdapterBase
         $this->recordsAdded = 0;
         $this->recordsUpdated = 0;
         $this->recordsSkipped = 0;
+        $this->downloads = [];
 
         $this->resetStatuses();
 
         echo "- Processing Data" . PHP_EOL;
         $this->loadPreviousMaps();
         $this->processFile($tFile);
+        echo "-- Completed: {$this->recordsAdded} added. {$this->recordsUpdated} updated. {$this->recordsSkipped} skipped." . PHP_EOL;
 
-        echo "- Completed: {$this->recordsAdded} added. {$this->recordsUpdated} updated. {$this->recordsSkipped} skipped." . PHP_EOL;
+        echo "- Downloading Assets" . PHP_EOL;
+        $this->downloadAssets();
+        echo "-- Completed.";
     }
 
-    public function download()
+    public function downloadSource()
     {
         return CurlHelper::downloadFile($this->url);
+    }
+
+    public function downloadAssets()
+    {
+        foreach ($this->downloads as $tDownloadList) {
+            foreach ($tDownloadList as $tDownload) {
+                $tLocalFile = "{$tDownload["directory"]}/{$tDownload["file"]}";
+                if (!is_dir($tDownload["directory"])) {
+                    mkdir($tDownload["directory"], 0777, true);
+                } else {
+                    if (file_exists($tLocalFile)) {
+                        continue;
+                    }
+                }
+
+                echo "-- Downloading: {$tLocalFile}" . PHP_EOL;
+                CurlHelper::downloadFile($tDownload["url"], $tLocalFile);
+            }
+        }
     }
 
     public function loadPreviousMaps()
@@ -98,13 +122,38 @@ abstract class AdapterBase
 
     public abstract function processXml(SimpleXMLElement $uXml);
 
-    protected function addLine($uValues)
+    protected function getLocalDownloadPaths($uAdapterId, $uCategory, $uUrls)
     {
-        $tSql = "";
+        $tDirectory = "downloaded/{$uAdapterId}/{$uCategory}";
+        $tLocalFiles = [];
 
+        foreach ($uUrls as $tUrl) {
+            $tLocalFiles[] = [
+                "url" => $tUrl,
+                "directory" => $tDirectory,
+                "file" => str_replace(
+                    "/",
+                    "_",
+                    parse_url($tUrl, PHP_URL_PATH)
+                )
+            ];
+        }
+
+        return $tLocalFiles;
+    }
+
+    protected function addDownloads($uLocalDownloads)
+    {
+        $this->downloads[] = $uLocalDownloads;
+    }
+
+    protected function addRecord($uValues, $uLocalDownloads = [])
+    {
+        $tSkipped = false;
         if (isset($this->previousRemoteIdMap[$uValues["RemoteId"]])) {
             $tPreviousId = $this->previousRemoteIdMap[$uValues["RemoteId"]];
             $tPreviousChecksum = $this->previousChecksumMap[$tPreviousId];
+
             // update if the record has changed
             if ($tPreviousChecksum != $uValues["Checksum"]) {
                 $tUpdateQuery = QueryBuilder::update()
@@ -119,6 +168,7 @@ abstract class AdapterBase
                 $this->recordsUpdated++;
             } else {
                 $this->recordsSkipped++;
+                $tSkipped = true;
             }
         } else {
             $tInsertQuery = QueryBuilder::insert()
@@ -128,6 +178,10 @@ abstract class AdapterBase
 
             $this->runner->pdo->exec($tInsertQuery);
             $this->recordsAdded++;
+        }
+
+        if (!$tSkipped && $uValues["Status"] != 0) {
+            $this->addDownloads($uLocalDownloads);
         }
     }
 }
