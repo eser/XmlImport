@@ -25,6 +25,8 @@ class Runner
                 Config::get("database/username"),
                 Config::get("database/password")
             );
+
+            $this->pdo->exec("SET NAMES 'utf8'");
         } catch (PDOException $tEx) {
             // TODO send mail
             throw $tEx;

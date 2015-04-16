@@ -11,31 +11,46 @@ abstract class AdapterBase
 {
     public $runner;
     public $id;
+    public $name;
     public $url;
-    public $outputFile;
     public $previousRemoteIdMap;
     public $previousChecksumMap;
+    public $recordsAdded;
+    public $recordsUpdated;
+    public $recordsSkipped;
 
     public function __construct(Runner $uRunner, $uConfig)
     {
         $this->runner = $uRunner;
 
         $this->id = $uConfig["id"];
+        $this->name = $uConfig["name"];
         $this->url = $uConfig["url"];
-
-        $this->outputFile = tempnam(sys_get_temp_dir(), "");
     }
 
     public function start()
     {
+        echo "Adapter {$this->name} is starting..." . PHP_EOL;
+
+        echo "- Downloading XML from {$this->url}" . PHP_EOL;
         $tFile = $this->download();
         if ($tFile === false) {
             // TODO throw error
             return false;
         }
 
+        echo "- Resetting Status Values" . PHP_EOL;
+        $this->recordsAdded = 0;
+        $this->recordsUpdated = 0;
+        $this->recordsSkipped = 0;
+
+        $this->resetStatuses();
+
+        echo "- Processing Data" . PHP_EOL;
         $this->loadPreviousMaps();
         $this->processFile($tFile);
+
+        echo "- Completed: {$this->recordsAdded} added. {$this->recordsUpdated} updated. {$this->recordsSkipped} skipped." . PHP_EOL;
     }
 
     public function download()
@@ -45,7 +60,6 @@ abstract class AdapterBase
 
     public function loadPreviousMaps()
     {
-        // TODO pull previous checksum => id pair by adapter id
         $tSelectQuery = QueryBuilder::factorySelect()
             ->select("Id, Checksum, RemoteId")
             ->from("Products")
@@ -60,9 +74,19 @@ abstract class AdapterBase
             $this->previousRemoteIdMap[$tRow['RemoteId']] = $tRow['Id'];
             $this->previousChecksumMap[$tRow['Id']] = $tRow['Checksum'];
         }
+    }
 
-        var_dump($this->previousRemoteIdMap);
-        var_dump($this->previousChecksumMap);
+    public function resetStatuses()
+    {
+        $tUpdateQuery = QueryBuilder::update()
+            ->table("Products")
+            ->set([
+                "Status" => 0
+            ])
+            ->where("AdapterId", $this->id)
+            ->toSql();
+
+        $this->runner->pdo->exec($tUpdateQuery);
     }
 
     public function processFile($uFile)
@@ -76,21 +100,34 @@ abstract class AdapterBase
 
     protected function addLine($uValues)
     {
-        // TODO calculate checksum of $uValues
-        $tChecksum = 0;
-
         $tSql = "";
 
         if (isset($this->previousRemoteIdMap[$uValues["RemoteId"]])) {
-            $tPreviousChecksum = $this->previousRemoteIdMap[$uValues["RemoteId"]];
+            $tPreviousId = $this->previousRemoteIdMap[$uValues["RemoteId"]];
+            $tPreviousChecksum = $this->previousChecksumMap[$tPreviousId];
             // update if the record has changed
-            if ($tPreviousChecksum != $tChecksum) {
-                // TODO update query
+            if ($tPreviousChecksum != $uValues["Checksum"]) {
+                $tUpdateQuery = QueryBuilder::update()
+                    ->table("Products")
+                    ->set($uValues)
+                    ->where("Id", $tPreviousId)
+                    ->limit(1)
+                    ->toSql();
+
+                $this->runner->pdo->exec($tUpdateQuery);
+
+                $this->recordsUpdated++;
+            } else {
+                $this->recordsSkipped++;
             }
         } else {
-            // TODO insert query
-        }
+            $tInsertQuery = QueryBuilder::insert()
+                ->into("Products")
+                ->values($uValues)
+                ->toSql();
 
-        file_put_contents($this->outputFile, "{$tSql}\n");
+            $this->runner->pdo->exec($tInsertQuery);
+            $this->recordsAdded++;
+        }
     }
 }

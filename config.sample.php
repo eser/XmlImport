@@ -8,8 +8,9 @@
         [
             "class"  => "Vendor\\XmlAdapters\\Sample",
             "config" => [
-                "id" => 1,
-                "url" => "http://www.domain.com/path/filename.xml"
+                "id"   => 1,
+                "name" => "Sample",
+                "url"  => "http://www.domain.com/path/filename.xml"
             ]
         ]
     ]
