@@ -19,6 +19,8 @@ abstract class AdapterBase
     public $recordsUpdated;
     public $recordsSkipped;
     public $downloads;
+    public $sqlSyncFile;
+    public $sqlParameters;
 
     public function __construct(Runner $uRunner, $uConfig)
     {
@@ -27,20 +29,26 @@ abstract class AdapterBase
         $this->id = $uConfig["id"];
         $this->name = $uConfig["name"];
         $this->url = $uConfig["url"];
+        $this->sqlSyncFile = $uConfig["sql.sync"];
+
+        $this->sqlParameters = [
+            ":adapter_id" => $this->id,
+            ":adapter_name" => $this->name
+        ];
     }
 
     public function start()
     {
-        echo "Adapter {$this->name} is starting..." . PHP_EOL;
+        echo "Adapter {$this->name} is starting...", PHP_EOL;
 
-        echo "- Downloading XML from {$this->url}" . PHP_EOL;
+        echo "- Downloading XML from {$this->url}", PHP_EOL;
         $tFile = $this->downloadSource();
         if ($tFile === false) {
             // TODO throw error
             return false;
         }
 
-        echo "- Resetting Status Values" . PHP_EOL;
+        echo "- Resetting Status Values", PHP_EOL;
         $this->recordsAdded = 0;
         $this->recordsUpdated = 0;
         $this->recordsSkipped = 0;
@@ -48,14 +56,17 @@ abstract class AdapterBase
 
         $this->resetStatuses();
 
-        echo "- Processing Data" . PHP_EOL;
+        echo "- Processing Data", PHP_EOL;
         $this->loadPreviousMaps();
         $this->processFile($tFile);
-        echo "-- Completed: {$this->recordsAdded} added. {$this->recordsUpdated} updated. {$this->recordsSkipped} skipped." . PHP_EOL;
+        echo "-- Completed: {$this->recordsAdded} added. {$this->recordsUpdated} updated. {$this->recordsSkipped} skipped.", PHP_EOL;
 
-        echo "- Downloading Assets" . PHP_EOL;
+        echo "- Syncing SQL", PHP_EOL;
+        $this->syncSql();
+
+        echo "- Downloading Assets", PHP_EOL;
         $this->downloadAssets();
-        echo "-- Completed.";
+        echo "-- Completed.", PHP_EOL, PHP_EOL;
     }
 
     public function downloadSource()
@@ -65,28 +76,26 @@ abstract class AdapterBase
 
     public function downloadAssets()
     {
-        foreach ($this->downloads as $tDownloadList) {
-            foreach ($tDownloadList as $tDownload) {
-                $tLocalFile = "{$tDownload["directory"]}/{$tDownload["file"]}";
-                if (!is_dir($tDownload["directory"])) {
-                    mkdir($tDownload["directory"], 0777, true);
-                } else {
-                    if (file_exists($tLocalFile)) {
-                        continue;
-                    }
+        foreach ($this->downloads as $tDownload) {
+            $tLocalFile = "{$tDownload["directory"]}/{$tDownload["file"]}";
+            if (!is_dir($tDownload["directory"])) {
+                mkdir($tDownload["directory"], 0777, true);
+            } else {
+                if (file_exists($tLocalFile)) {
+                    continue;
                 }
-
-                echo "-- Downloading: {$tLocalFile}" . PHP_EOL;
-                CurlHelper::downloadFile($tDownload["url"], $tLocalFile);
             }
+
+            echo "-- Downloading: {$tLocalFile}", PHP_EOL;
+            CurlHelper::downloadFile($tDownload["url"], $tLocalFile);
         }
     }
 
     public function loadPreviousMaps()
     {
         $tSelectQuery = QueryBuilder::factorySelect()
-            ->select("Id, Checksum, RemoteId")
-            ->from("Products")
+            ->select("ItemId, Checksum, RemoteId")
+            ->from("XmlImport")
             ->where("AdapterId", $this->id)
             ->toSql();
 
@@ -95,15 +104,15 @@ abstract class AdapterBase
 
         $tRows = $this->runner->pdo->query($tSelectQuery);
         foreach ($tRows as $tRow) {
-            $this->previousRemoteIdMap[$tRow['RemoteId']] = $tRow['Id'];
-            $this->previousChecksumMap[$tRow['Id']] = $tRow['Checksum'];
+            $this->previousRemoteIdMap[$tRow["RemoteId"]] = $tRow["ItemId"];
+            $this->previousChecksumMap[$tRow["ItemId"]] = $tRow["Checksum"];
         }
     }
 
     public function resetStatuses()
     {
         $tUpdateQuery = QueryBuilder::update()
-            ->table("Products")
+            ->table("XmlImport")
             ->set([
                 "Status" => 0
             ])
@@ -111,6 +120,19 @@ abstract class AdapterBase
             ->toSql();
 
         $this->runner->pdo->exec($tUpdateQuery);
+    }
+
+    public function syncSql()
+    {
+        if (strlen($this->sqlSyncFile) === 0) {
+            return;
+        }
+
+        $tPath = __DIR__ . "/../../../" . $this->sqlSyncFile;
+        $tSql = file_get_contents($tPath);
+
+        $tQuery = $this->runner->pdo->prepare($tSql);
+        $tQuery->execute($this->sqlParameters);
     }
 
     public function processFile($uFile)
@@ -122,34 +144,28 @@ abstract class AdapterBase
 
     public abstract function processXml(SimpleXMLElement $uXml);
 
-    protected function getLocalDownloadPaths($uAdapterId, $uCategory, $uUrls)
+    protected function addDownload($uAdapterId, $uCategory, $uUrl)
     {
-        $tDirectory = "downloaded/{$uAdapterId}/{$uCategory}";
-        $tLocalFiles = [];
+        $tDownload = [
+            "url" => $uUrl,
+            "directory" => "downloaded/{$uAdapterId}/{$uCategory}",
+            "file" => str_replace(
+                "/",
+                "_",
+                parse_url($uUrl, PHP_URL_PATH)
+            )
+        ];
 
-        foreach ($uUrls as $tUrl) {
-            $tLocalFiles[] = [
-                "url" => $tUrl,
-                "directory" => $tDirectory,
-                "file" => str_replace(
-                    "/",
-                    "_",
-                    parse_url($tUrl, PHP_URL_PATH)
-                )
-            ];
-        }
+        $this->downloads[] = $tDownload;
 
-        return $tLocalFiles;
+        return $tDownload;
     }
 
-    protected function addDownloads($uLocalDownloads)
+    protected function addRecord($uValues, $uImages = [])
     {
-        $this->downloads[] = $uLocalDownloads;
-    }
+        $tDownload = false;
+        $tItemId = 0;
 
-    protected function addRecord($uValues, $uLocalDownloads = [])
-    {
-        $tSkipped = false;
         if (isset($this->previousRemoteIdMap[$uValues["RemoteId"]])) {
             $tPreviousId = $this->previousRemoteIdMap[$uValues["RemoteId"]];
             $tPreviousChecksum = $this->previousChecksumMap[$tPreviousId];
@@ -157,9 +173,9 @@ abstract class AdapterBase
             // update if the record has changed
             if ($tPreviousChecksum != $uValues["Checksum"]) {
                 $tUpdateQuery = QueryBuilder::update()
-                    ->table("Products")
+                    ->table("XmlImport")
                     ->set($uValues)
-                    ->where("Id", $tPreviousId)
+                    ->where("ItemId", $tPreviousId)
                     ->limit(1)
                     ->toSql();
 
@@ -168,20 +184,34 @@ abstract class AdapterBase
                 $this->recordsUpdated++;
             } else {
                 $this->recordsSkipped++;
-                $tSkipped = true;
             }
         } else {
             $tInsertQuery = QueryBuilder::insert()
-                ->into("Products")
+                ->into("XmlImport")
                 ->values($uValues)
                 ->toSql();
 
             $this->runner->pdo->exec($tInsertQuery);
+            $tItemId = $this->runner->pdo->lastInsertId();
+
             $this->recordsAdded++;
+            $tDownload = true;
         }
 
-        if (!$tSkipped && $uValues["Status"] != 0) {
-            $this->addDownloads($uLocalDownloads);
+        if ($tDownload && $uValues["Status"] != 0) {
+            foreach ($uImages as $tImage) {
+                $tDownload = $this->addDownload($this->id, "images", $tImage);
+
+                $tInsertImageQuery = QueryBuilder::insert()
+                    ->into("XmlImportImages")
+                    ->values([
+                        "ItemId" => $tItemId,
+                        "Url" => "{$tDownload["directory"]}/{$tDownload["file"]}"
+                    ])
+                    ->toSql();
+
+                $this->runner->pdo->exec($tInsertImageQuery);
+            }
         }
     }
 }

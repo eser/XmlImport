@@ -37,13 +37,13 @@ class CurlHelper
 
                 // HTTP 5xx
                 if ($tLoop < 3 && ($tHttpStatus >= 500 && $tHttpStatus < 600)) {
-                    echo "HTTP {$tHttpStatus}, trying again..." . PHP_EOL;
+                    echo "HTTP {$tHttpStatus}, trying again...", PHP_EOL;
                     // try again after 1 second delay
                     usleep(1000000);
                     continue;
                 }
 
-                echo "CURL Error Code " . curl_error($tCurl) . PHP_EOL;
+                echo "CURL Error Message: ", curl_error($tCurl), PHP_EOL;
                 $tFailed = true;
             }
 
