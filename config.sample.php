@@ -8,10 +8,11 @@
         [
             "class"  => "Vendor\\XmlAdapters\\Sample",
             "config" => [
-                "id"       => 1,
-                "name"     => "Sample",
-                "url"      => "http://www.domain.com/path/filename.xml",
-                "sql.sync" => "sql/sync.sample.sql"
+                "id"        => 1,
+                "name"      => "Sample",
+                "url"       => "http://www.domain.com/path/filename.xml",
+                "sql.sync"  => "sql/sync.sample.sql",
+                "downloads" => "downloaded/"
             ]
         ]
     ]

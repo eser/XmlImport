@@ -15,12 +15,14 @@ abstract class AdapterBase
     public $url;
     public $previousRemoteIdMap;
     public $previousChecksumMap;
+    public $recordCheckListMap;
     public $recordsAdded;
     public $recordsUpdated;
     public $recordsSkipped;
     public $downloads;
     public $sqlSyncFile;
     public $sqlParameters;
+    public $downloadsPath;
 
     public function __construct(Runner $uRunner, $uConfig)
     {
@@ -30,6 +32,7 @@ abstract class AdapterBase
         $this->name = $uConfig["name"];
         $this->url = $uConfig["url"];
         $this->sqlSyncFile = $uConfig["sql.sync"];
+        $this->downloadsPath = rtrim($uConfig["downloads"], "/") . "/";
 
         $this->sqlParameters = [
             ":adapter_id" => $this->id,
@@ -48,13 +51,10 @@ abstract class AdapterBase
             return false;
         }
 
-        echo "- Resetting Status Values", PHP_EOL;
         $this->recordsAdded = 0;
         $this->recordsUpdated = 0;
         $this->recordsSkipped = 0;
         $this->downloads = [];
-
-        $this->resetStatuses();
 
         echo "- Processing Data", PHP_EOL;
         $this->loadPreviousMaps();
@@ -62,6 +62,7 @@ abstract class AdapterBase
         echo "-- Completed: {$this->recordsAdded} added. {$this->recordsUpdated} updated. {$this->recordsSkipped} skipped.", PHP_EOL;
 
         echo "- Syncing SQL", PHP_EOL;
+        $this->setRedundantsPassive();
         $this->syncSql();
 
         echo "- Downloading Assets", PHP_EOL;
@@ -77,16 +78,17 @@ abstract class AdapterBase
     public function downloadAssets()
     {
         foreach ($this->downloads as $tDownload) {
-            $tLocalFile = "{$tDownload["directory"]}/{$tDownload["file"]}";
-            if (!is_dir($tDownload["directory"])) {
-                mkdir($tDownload["directory"], 0777, true);
+            $tLocalDirectory = $this->downloadsPath . $tDownload["directory"];
+            $tLocalFile = "{$tLocalDirectory}/{$tDownload["file"]}";
+            if (!is_dir($tLocalDirectory)) {
+                mkdir($tLocalDirectory, 0777, true);
             } else {
                 if (file_exists($tLocalFile)) {
                     continue;
                 }
             }
 
-            echo "-- Downloading: {$tLocalFile}", PHP_EOL;
+            echo "-- Downloading: {$tDownload["file"]}", PHP_EOL;
             CurlHelper::downloadFile($tDownload["url"], $tLocalFile);
         }
     }
@@ -101,25 +103,32 @@ abstract class AdapterBase
 
         $this->previousRemoteIdMap = [];
         $this->previousChecksumMap = [];
+        $this->recordCheckListMap = [];
 
         $tRows = $this->runner->pdo->query($tSelectQuery);
         foreach ($tRows as $tRow) {
             $this->previousRemoteIdMap[$tRow["RemoteId"]] = $tRow["ItemId"];
             $this->previousChecksumMap[$tRow["ItemId"]] = $tRow["Checksum"];
+            $this->recordCheckListMap[$tRow["ItemId"]] = true;
         }
     }
 
-    public function resetStatuses()
+    public function setRedundantsPassive()
     {
-        $tUpdateQuery = QueryBuilder::update()
-            ->table("XmlImport")
-            ->set([
-                "Status" => 0
-            ])
-            ->where("AdapterId", $this->id)
-            ->toSql();
+        if (count($this->recordCheckListMap) > 0) {
+            $tUpdateQuery = QueryBuilder::update()
+                ->table("XmlImport")
+                ->set([
+                    "Status" => 0
+                ])
+                ->where([
+                    "ItemID IN (" . implode(", ", array_keys($this->recordCheckListMap)) . ")",
+                    ["AdapterId", $this->id]
+                ])
+                ->toSql();
 
-        $this->runner->pdo->exec($tUpdateQuery);
+            $this->runner->pdo->exec($tUpdateQuery);
+        }
     }
 
     public function syncSql()
@@ -148,7 +157,7 @@ abstract class AdapterBase
     {
         $tDownload = [
             "url" => $uUrl,
-            "directory" => "downloaded/{$uAdapterId}/{$uCategory}",
+            "directory" => "xmlimport/{$uAdapterId}/{$uCategory}",
             "file" => str_replace(
                 "/",
                 "_",
@@ -185,6 +194,8 @@ abstract class AdapterBase
             } else {
                 $this->recordsSkipped++;
             }
+
+            unset($this->recordCheckListMap[$tPreviousId]);
         } else {
             $tInsertQuery = QueryBuilder::insert()
                 ->into("XmlImport")

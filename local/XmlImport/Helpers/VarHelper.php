@@ -27,4 +27,9 @@ class VarHelper
         $tDecoded = html_entity_decode($uString, ENT_COMPAT | ENT_HTML5, 'UTF-8');
         return html_entity_decode($tDecoded, ENT_COMPAT | ENT_HTML5, 'UTF-8');
     }
+
+    public static function getFloat($uVar)
+    {
+        return (float)(str_replace($uVar, ",", "."));
+    }
 }

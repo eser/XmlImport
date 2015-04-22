@@ -43,7 +43,7 @@ class CurlHelper
                     continue;
                 }
 
-                echo "CURL Error Message: ", curl_error($tCurl), PHP_EOL;
+                // echo "CURL Error Message: ", curl_error($tCurl), PHP_EOL;
                 $tFailed = true;
             }
 

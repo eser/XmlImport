@@ -2,9 +2,11 @@
 
 namespace XmlImport\Runner;
 
+use Exception;
 use PDO;
 use PDOException;
 use XmlImport\Config\Config;
+use XmlImport\Helpers\MailHelper;
 
 class Runner
 {
@@ -28,7 +30,7 @@ class Runner
 
             $this->pdo->exec("SET NAMES 'utf8'");
         } catch (PDOException $tEx) {
-            // TODO send mail
+            MailHelper::sendException($tEx);
             throw $tEx;
         }
 
@@ -41,7 +43,12 @@ class Runner
 
         // download data
         foreach ($this->adapterInstances as $tAdapterInstance) {
-            $tAdapterInstance->start();
+            try {
+                $tAdapterInstance->start();
+            } catch (Exception $tEx) {
+                MailHelper::sendException($tEx);
+                throw $tEx;
+            }
         }
     }
 }
