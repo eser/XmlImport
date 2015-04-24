@@ -28,7 +28,12 @@ class Runner
                 Config::get("database/password")
             );
 
-            $this->pdo->exec("SET NAMES 'utf8'");
+            $this->pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+
+            $tCmds = Config::get("database/commands");
+            if (strlen($tCmds) > 0) {
+                $this->pdo->exec($tCmds);
+            }
         } catch (PDOException $tEx) {
             MailHelper::sendException($tEx);
             throw $tEx;
@@ -42,13 +47,29 @@ class Runner
         }
 
         // download data
+        $tJobs = array();
+        $tStart = microtime(true);
         foreach ($this->adapterInstances as $tAdapterInstance) {
+            $tLast = microtime(true);
             try {
-                $tAdapterInstance->start();
+                $tReturn = $tAdapterInstance->start();
+                $tJobs[] = array($tAdapterInstance->name, "OK", microtime(true) - $tLast, $tReturn);
             } catch (Exception $tEx) {
                 MailHelper::sendException($tEx);
+
+                $tJobs[] = array($tAdapterInstance->name, "Failed", microtime(true) - $tLast, "");
                 throw $tEx;
             }
         }
+
+        // execute completed events
+        $tCompleted = Config::get("events/completed");
+        if (strlen($tCompleted) > 0) {
+            $tLast = microtime(true);
+            $tResult = shell_exec($tCompleted);
+            $tJobs[] = array("event_completed", "OK", microtime(true) - $tLast, $tResult);
+        }
+
+        MailHelper::sendSummary($tJobs, microtime(true) - $tStart);
     }
 }

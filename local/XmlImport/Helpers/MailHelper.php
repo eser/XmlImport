@@ -39,9 +39,22 @@ class MailHelper
         $exception = $uException;
 
         ob_start();
-        require BASE_DIR . "etc/mailtemplate.php";
+        require BASE_DIR . "etc/mails/errortemplate.php";
         $tContent = ob_get_clean();
 
         static::sendLog("XmlImport Error: " . get_class($uException), $tContent);
+    }
+
+    public static function sendSummary($uJobs, $uTimespan)
+    {
+        // for templating
+        $jobs = $uJobs;
+        $timespan = $uTimespan;
+
+        ob_start();
+        require BASE_DIR . "etc/mails/summarytemplate.php";
+        $tContent = ob_get_clean();
+
+        static::sendLog("XmlImport Summary", $tContent);
     }
 }

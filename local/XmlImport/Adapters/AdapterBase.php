@@ -59,7 +59,9 @@ abstract class AdapterBase
         echo "- Processing Data", PHP_EOL;
         $this->loadPreviousMaps();
         $this->processFile($tFile);
-        echo "-- Completed: {$this->recordsAdded} added. {$this->recordsUpdated} updated. {$this->recordsSkipped} skipped.", PHP_EOL;
+
+        $tResult = "{$this->recordsAdded} added. {$this->recordsUpdated} updated. {$this->recordsSkipped} skipped.";
+        echo "-- Completed: {$tResult}", PHP_EOL;
 
         echo "- Syncing SQL", PHP_EOL;
         $this->setRedundantsPassive();
@@ -68,6 +70,8 @@ abstract class AdapterBase
         echo "- Downloading Assets", PHP_EOL;
         $this->downloadAssets();
         echo "-- Completed.", PHP_EOL, PHP_EOL;
+
+        return $tResult;
     }
 
     public function downloadSource()

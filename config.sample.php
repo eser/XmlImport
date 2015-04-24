@@ -2,7 +2,9 @@
     "database" => array(
         "conn"     => "mysql:host=localhost;dbname=xmlimport",
         "username" => "root",
-        "password" => ""
+        "password" => "",
+
+        "commands" => "SET NAMES 'utf8'"
     ),
     "mail" => array(
         "from"          => "xmlimport@github.com",
@@ -22,5 +24,8 @@
                 "downloads" => "downloaded/"
             )
         )
+    ),
+    "events" => array(
+        // "completed" => "php -f ../shell/indexer.php reindexall"
     )
 );

@@ -6,6 +6,8 @@ set_time_limit(0);
 ini_set("display_errors", "on");
 error_reporting(E_ALL);
 
+date_default_timezone_set("Europe/Istanbul");
+
 define("BASE_DIR", __DIR__ . "/../");
 
 $tConfig = require __DIR__ . "/../config.php";

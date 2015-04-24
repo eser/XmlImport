@@ -71,3 +71,28 @@ CREATE TABLE `XmlImportImages` (
 )
 ENGINE=InnoDB
 DEFAULT CHARACTER SET=utf8 COLLATE=utf8_general_ci;
+
+DROP FUNCTION XmlImportUpsertValue;
+CREATE FUNCTION XmlImportUpsertValue(attribute_id INT, name VARCHAR(255)) RETURNS INT
+  DETERMINISTIC
+BEGIN
+  DECLARE ReturnId INT;
+
+  SELECT
+    aov.`option_id` INTO ReturnId
+  FROM
+    `mweav_attribute` a
+    INNER JOIN `mweav_attribute_option` ao ON a.`attribute_id` = ao.`attribute_id`
+    INNER JOIN `mweav_attribute_option_value` aov ON ao.`option_id` = aov.`option_id`
+  WHERE
+    a.`attribute_id` = attribute_id AND aov.`value` LIKE name AND aov.`store_id` = 0
+  LIMIT 1;
+
+  IF ReturnId IS NULL THEN
+    INSERT INTO `mweav_attribute_option` VALUES (NULL, attribute_id, 0);
+    SELECT LAST_INSERT_ID() INTO ReturnId;
+    INSERT INTO `mweav_attribute_option_value` VALUES (NULL, ReturnId, 0, name);
+  END IF;
+
+  RETURN (ReturnId);
+END;
