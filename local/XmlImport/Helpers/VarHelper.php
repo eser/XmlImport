@@ -30,6 +30,6 @@ class VarHelper
 
     public static function getFloat($uVar)
     {
-        return (float)(str_replace($uVar, ",", "."));
+        return (float)(str_replace(",", ".", $uVar));
     }
 }

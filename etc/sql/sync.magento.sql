@@ -79,7 +79,8 @@ UPDATE
   INNER JOIN `XmlImportEntities` xie ON qty.`product_id`=xie.`EntityId`
   INNER JOIN `XmlImport` xi ON xie.`LocalId`=xi.`ItemId` AND xi.`AdapterId`=@adapter_id
 SET
-  qty.`qty`=xi.Quantity;
+  qty.`qty`=xi.Quantity,
+  qty.`is_in_stock`=(xi.Quantity > 0);
 
 -- insert quantity
 INSERT INTO `mwcataloginventory_stock_item`
