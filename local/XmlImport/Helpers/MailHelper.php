@@ -18,7 +18,11 @@ class MailHelper
 
         $tHeadersRaw = "";
         foreach ($tHeaders as $tHeaderKey => $tHeaderValue) {
-            $tHeadersRaw += "{$tHeaderKey}: {$tHeaderValue}" . PHP_EOL;
+            if (strlen($tHeadersRaw) > 0) {
+                $tHeadersRaw .= PHP_EOL;
+            }
+
+            $tHeadersRaw .= "{$tHeaderKey}: {$tHeaderValue}";
         }
 
         mail($uTo, $uSubject, $uMessage, $tHeadersRaw);
@@ -34,8 +38,10 @@ class MailHelper
         // for templating
         $exception = $uException;
 
-        $tContent = require BASE_DIR . "etc/mailtemplate.php";
+        ob_start();
+        require BASE_DIR . "etc/mailtemplate.php";
+        $tContent = ob_get_clean();
 
-        static::sendLog("XmlImport Exception", $tContent);
+        static::sendLog("XmlImport Error: " . get_class($uException), $tContent);
     }
 }
