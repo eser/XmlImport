@@ -12,7 +12,7 @@ class Runner
 {
     public $exitCode = 0;
     public $pdo;
-    public $adapterInstances = [];
+    public $adapterInstances = array();
 
     public function __construct()
     {

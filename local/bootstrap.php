@@ -6,6 +6,8 @@ set_time_limit(0);
 ini_set("display_errors", "on");
 error_reporting(E_ALL);
 
+define("BASE_DIR", __DIR__ . "/../");
+
 $tConfig = require __DIR__ . "/../config.php";
 
 $tAutoLoader = require __DIR__ . "/../vendor/autoload.php";

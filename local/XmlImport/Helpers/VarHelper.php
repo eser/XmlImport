@@ -13,7 +13,7 @@ class VarHelper
 
     public static function xmlArrayToJson(SimpleXMLElement $tIterator)
     {
-        $tItems = [];
+        $tItems = array();
         foreach ($tIterator as $tItem)
         {
             $tItems[] = static::htmlDecode(current($tItem));

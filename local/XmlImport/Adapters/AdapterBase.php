@@ -34,10 +34,10 @@ abstract class AdapterBase
         $this->sqlSyncFile = $uConfig["sql.sync"];
         $this->downloadsPath = rtrim($uConfig["downloads"], "/") . "/";
 
-        $this->sqlParameters = [
+        $this->sqlParameters = array(
             ":adapter_id" => $this->id,
             ":adapter_name" => $this->name
-        ];
+        );
     }
 
     public function start()
@@ -54,7 +54,7 @@ abstract class AdapterBase
         $this->recordsAdded = 0;
         $this->recordsUpdated = 0;
         $this->recordsSkipped = 0;
-        $this->downloads = [];
+        $this->downloads = array();
 
         echo "- Processing Data", PHP_EOL;
         $this->loadPreviousMaps();
@@ -101,9 +101,9 @@ abstract class AdapterBase
             ->where("AdapterId", $this->id)
             ->toSql();
 
-        $this->previousRemoteIdMap = [];
-        $this->previousChecksumMap = [];
-        $this->recordCheckListMap = [];
+        $this->previousRemoteIdMap = array();
+        $this->previousChecksumMap = array();
+        $this->recordCheckListMap = array();
 
         $tRows = $this->runner->pdo->query($tSelectQuery);
         foreach ($tRows as $tRow) {
@@ -118,13 +118,13 @@ abstract class AdapterBase
         if (count($this->recordCheckListMap) > 0) {
             $tUpdateQuery = QueryBuilder::update()
                 ->table("XmlImport")
-                ->set([
+                ->set(array(
                     "Status" => 0
-                ])
-                ->where([
+                ))
+                ->where(array(
                     "ItemID IN (" . implode(", ", array_keys($this->recordCheckListMap)) . ")",
-                    ["AdapterId", $this->id]
-                ])
+                    array("AdapterId", $this->id)
+                ))
                 ->toSql();
 
             $this->runner->pdo->exec($tUpdateQuery);
@@ -137,7 +137,7 @@ abstract class AdapterBase
             return;
         }
 
-        $tPath = __DIR__ . "/../../../" . $this->sqlSyncFile;
+        $tPath = BASE_DIR . $this->sqlSyncFile;
         $tSql = file_get_contents($tPath);
 
         $tQuery = $this->runner->pdo->prepare($tSql);
@@ -155,7 +155,7 @@ abstract class AdapterBase
 
     protected function addDownload($uAdapterId, $uCategory, $uUrl)
     {
-        $tDownload = [
+        $tDownload = array(
             "url" => $uUrl,
             "directory" => "xmlimport/{$uAdapterId}/{$uCategory}",
             "file" => str_replace(
@@ -163,14 +163,14 @@ abstract class AdapterBase
                 "_",
                 parse_url($uUrl, PHP_URL_PATH)
             )
-        ];
+        );
 
         $this->downloads[] = $tDownload;
 
         return $tDownload;
     }
 
-    protected function addRecord($uValues, $uImages = [])
+    protected function addRecord($uValues, $uImages = array())
     {
         $tDownload = false;
         $tItemId = 0;
@@ -215,10 +215,10 @@ abstract class AdapterBase
 
                 $tInsertImageQuery = QueryBuilder::insert()
                     ->into("XmlImportImages")
-                    ->values([
+                    ->values(array(
                         "ItemId" => $tItemId,
                         "Url" => "{$tDownload["directory"]}/{$tDownload["file"]}"
-                    ])
+                    ))
                     ->toSql();
 
                 $this->runner->pdo->exec($tInsertImageQuery);

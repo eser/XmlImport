@@ -3,26 +3,39 @@
 namespace XmlImport\Helpers;
 
 use Exception;
+use XmlImport\Config\Config;
 
 class MailHelper
 {
     public static function send($uTo, $uSubject, $uMessage)
     {
-        $tHeaders = "From: eser.ozvataf@zaimogluholding.com.tr" . PHP_EOL .
-            "Reply-To: eser.ozvataf@zaimogluholding.com.tr" . PHP_EOL .
-            "Content-Type: text/html; charset=utf-8" . PHP_EOL .
-            "X-Mailer: PHP/" . phpversion();
+        $tHeaders = array(
+            "From" => Config::get("mail/from"),
+            "Reply-To" => Config::get("mail/from"),
+            "Content-Type" => "text/html; charset=utf-8"
+        );
+        $tHeaders += Config::get("mail/headers");
 
-        mail($uTo, $uSubject, $uMessage, $tHeaders);
+        $tHeadersRaw = "";
+        foreach ($tHeaders as $tHeaderKey => $tHeaderValue) {
+            $tHeadersRaw += "{$tHeaderKey}: {$tHeaderValue}" . PHP_EOL;
+        }
+
+        mail($uTo, $uSubject, $uMessage, $tHeadersRaw);
     }
 
     public static function sendLog($uSubject, $uMessage)
     {
-        static::send("it_eticaret@zaimogluholding.com.tr", $uSubject, $uMessage);
+        static::send(Config::get("mail/to"), $uSubject, $uMessage);
     }
 
     public static function sendException(Exception $uException)
     {
-        static::sendLog("XmlImport Exception", $uException->getMessage());
+        // for templating
+        $exception = $uException;
+
+        $tContent = require BASE_DIR . "etc/mailtemplate.php";
+
+        static::sendLog("XmlImport Exception", $tContent);
     }
 }

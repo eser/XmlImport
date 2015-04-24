@@ -15,13 +15,13 @@ class CurlHelper
         $tCurl = curl_init();
         curl_setopt_array(
             $tCurl,
-            [
+            array(
                 CURLOPT_URL => $uUrl,
                 CURLOPT_TIMEOUT => 50,
                 CURLOPT_FILE => $tFilePointer,
                 CURLOPT_FOLLOWLOCATION => true,
                 CURLOPT_SSL_VERIFYPEER => false
-            ]
+            )
         );
 
         $tLoop = 0;
