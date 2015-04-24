@@ -24,8 +24,8 @@ class VarHelper
 
     public static function htmlDecode($uString)
     {
-        $tDecoded = html_entity_decode($uString, ENT_COMPAT | ENT_HTML5, 'UTF-8');
-        return html_entity_decode($tDecoded, ENT_COMPAT | ENT_HTML5, 'UTF-8');
+        $tDecoded = html_entity_decode($uString, ENT_COMPAT, 'UTF-8'); //  | ENT_HTML5
+        return html_entity_decode($tDecoded, ENT_COMPAT, 'UTF-8'); //  | ENT_HTML5
     }
 
     public static function getFloat($uVar)
