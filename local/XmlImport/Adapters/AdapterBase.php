@@ -5,6 +5,7 @@ namespace XmlImport\Adapters;
 use SimpleXMLElement;
 use PO\QueryBuilder;
 use XmlImport\Helpers\CurlHelper;
+use XmlImport\Helpers\SqlHelper;
 use XmlImport\Runner\Runner;
 
 abstract class AdapterBase
@@ -142,10 +143,24 @@ abstract class AdapterBase
         }
 
         $tPath = BASE_DIR . $this->sqlSyncFile;
-        $tSql = file_get_contents($tPath);
+        $this->runner->logger->addInfo("Reading Sync SQL File: {$tPath}");
+        $tSqlStrings = SqlHelper::splitSqlFile($tPath);
 
-        $tQuery = $this->runner->pdo->prepare($tSql);
-        $tQuery->execute($this->sqlParameters);
+        $tTotalAffected = 0;
+        foreach ($tSqlStrings as $tSqlString) {
+            $this->runner->logger->addDebug("SQL Query: {$tSqlString}");
+
+            $tQuery = $this->runner->pdo->prepare($tSqlString);
+            // TODO check which parameters are used in query
+            $tQuery->execute($this->sqlParameters);
+
+            $tCountAffected = $tQuery->rowCount();
+            $this->runner->logger->addDebug("SQL Query Result: {$tCountAffected} rows affected");
+
+            $tTotalAffected += $tCountAffected;
+        }
+
+        $this->runner->logger->addInfo("Sync SQL is finished: {$tTotalAffected} rows affected in total.");
     }
 
     public function processFile($uFile)

@@ -9,42 +9,41 @@ SET @attribute_set_id = :attribute_set_id;
 -- create temp table
 DROP TABLE IF EXISTS `XmlImportEntities`;
 CREATE TEMPORARY TABLE `XmlImportEntities` (
-    `LocalId` INT NOT NULL,
-    `SyncTag` VARCHAR(64) NOT NULL,
-    `EntityId` INT
---    `xmlsync` INT NOT NULL
+  `LocalId` INT NOT NULL,
+  `SyncTag` VARCHAR(64) NOT NULL,
+  `EntityId` INT,
+  `Exists` INT NOT NULL,
+  `Active` INT NOT NULL
 );
 
 INSERT INTO `XmlImportEntities`
 SELECT
-    xi.`ItemId` AS `LocalId`,
-    COALESCE(p.`sku`, CONCAT(@adapter_name, '_', COALESCE(xi.`RemoteSKU`, xi.`RemoteId`))) AS `SyncTag`,
-    vendor_product_id.`entity_id`
---    (xml.`value` IS NULL OR xml.`value` IN (6222, 6223)) AS `xmlsync`
+  xi.`ItemId` AS `LocalId`,
+  COALESCE(p.`sku`, CONCAT(@adapter_name, '_', COALESCE(xi.`RemoteSKU`, xi.`RemoteId`))) AS `SyncTag`,
+  vendor_product_id.`entity_id` AS `EntityId`,
+  vendor_product_id.`entity_id` IS NOT NULL AS `Exists`,
+  CASE WHEN product_status.`value` IS NULL OR product_status.`value`=1 THEN 1 ELSE 0 END AS `Active`
 FROM
-    `XmlImport` xi
-    LEFT JOIN `mwcatalog_product_entity_varchar` vendor_product_id ON xi.`RemoteId`=vendor_product_id.`value` AND vendor_product_id.`attribute_id` = 176 AND vendor_product_id.`store_id` = 0
-    LEFT JOIN `mwcatalog_product_entity` p ON vendor_product_id.`entity_id`=p.`entity_id` AND p.`attribute_set_id`=@attribute_set_id
-    LEFT JOIN `mwcatalog_product_entity_int` xml ON p.`entity_id`=xml.`entity_id` AND xml.`attribute_id` = 266 AND xml.`store_id` = 0
+  `XmlImport` xi
+  LEFT JOIN `mwcatalog_product_entity_varchar` vendor_product_id ON xi.`RemoteId`=vendor_product_id.`value` AND vendor_product_id.`attribute_id` = 176 AND vendor_product_id.`store_id` = 0
+  LEFT JOIN `mwcatalog_product_entity` p ON vendor_product_id.`entity_id`=p.`entity_id` AND p.`attribute_set_id`=@attribute_set_id
+  LEFT JOIN `mwcatalog_product_entity_int` product_status ON p.`entity_id`=product_status.`entity_id` AND vendor_product_id.`store_id` = 0
 WHERE
-    xi.`Status` = 1 AND
-    xi.`AdapterId` = @adapter_id AND
-    (xml.`value` IS NULL OR xml.`value` IN (6222, 6223));
+  xi.`AdapterId` = @adapter_id;
 
 -- disable existing entities first
 UPDATE
   `mwcatalog_product_entity_int` ints
-  INNER JOIN `mwcatalog_product_entity` p ON ints.`entity_id`=p.`entity_id` AND ints.`attribute_id` = 84 AND ints.`store_id` = 0
-  LEFT JOIN `mwcatalog_product_entity_int` xml ON p.`entity_id`=xml.`entity_id` AND xml.`attribute_id` = 266 AND xml.`store_id` = 0
+  INNER JOIN `mwcatalog_product_entity` p ON ints.`entity_id`=p.`entity_id` AND p.`attribute_set_id`=@attribute_set_id
 SET
-  ints.`value` = 0
+  ints.`value` = 6224
 WHERE
-  p.`attribute_set_id`=@attribute_set_id AND
-  (xml.`value` IS NULL OR xml.`value` IN (6222, 6223));
+  ints.`attribute_id` = 266 AND
+  ints.`store_id` = 0;
 
 -- update existing entities
 UPDATE `mwcatalog_product_entity` p
-INNER JOIN `XmlImportEntities` xie ON p.`entity_id`=xie.`EntityId`
+INNER JOIN `XmlImportEntities` xie ON p.`entity_id`=xie.`EntityId` AND xie.`Active`=1
 SET p.`updated_at`=NOW();
 
 -- insert new entities
@@ -59,10 +58,10 @@ SELECT
   0 AS `required_options`,
   NOW() AS `created_at`,
   NOW() AS `updated_at`
-FROM
+FROM 
   `XmlImportEntities` xie
 WHERE
-  xie.`EntityId` IS NULL;
+  xie.`Exists` = 0;
 
 -- set entity_id of inserted entities
 UPDATE
@@ -71,7 +70,7 @@ UPDATE
 SET
   xie.`EntityId`=p.`entity_id`
 WHERE
-  xie.`EntityId` IS NULL;
+  xie.`Exists` = 0;
 
 -- update quantity
 UPDATE
@@ -80,7 +79,9 @@ UPDATE
   INNER JOIN `XmlImport` xi ON xie.`LocalId`=xi.`ItemId` AND xi.`AdapterId`=@adapter_id
 SET
   qty.`qty`=xi.Quantity,
-  qty.`is_in_stock`=(xi.Quantity > 0);
+  qty.`is_in_stock`=(xi.Quantity > 0)
+WHERE
+  xie.`Active` = 1;
 
 -- insert quantity
 INSERT INTO `mwcataloginventory_stock_item`
@@ -114,7 +115,8 @@ FROM
   INNER JOIN `XmlImport` xi ON xie.`LocalId`=xi.`ItemId` AND xi.`AdapterId`=@adapter_id
   LEFT JOIN `mwcataloginventory_stock_item` qty ON xie.`EntityId`=qty.`product_id`
 WHERE
-  qty.`product_id` IS NULL;
+  qty.`product_id` IS NULL AND
+  xie.`Active` = 1;
 
 -- update ints
 UPDATE
@@ -123,10 +125,35 @@ UPDATE
   INNER JOIN `XmlImport` xi ON xie.`LocalId`=xi.`ItemId` AND xi.`AdapterId`=@adapter_id
 SET
   ints.`value`=CASE ints.`attribute_id`
-    WHEN 84 THEN 1
+    WHEN 266 THEN IF(xi.`Status` = 1, 6223, 6222)
+    WHEN 85 THEN CASE xi.`VAT`
+      WHEN 18 THEN 2
+      WHEN 8 THEN 6
+      WHEN 10 THEN 7
+      WHEN 1 THEN 8
+    END
   END
 WHERE
-  ints.`attribute_id` IN (84) AND ints.`store_id` = 0;
+  ints.`attribute_id` IN (266) AND
+  ints.`store_id` = 0 AND
+  xie.`Active` = 1;
+
+-- insert ints: remote id
+INSERT INTO `mwcatalog_product_entity_int`
+SELECT
+  NULL AS `value_id`,
+  4 AS `entity_type_id`,
+  176 AS `attribute_id`,
+  0 AS `store_id`,
+  xie.`EntityId` AS `entity_id`,
+  xie.`SyncTag` AS `value`
+FROM
+  `XmlImportEntities` xie
+  INNER JOIN `XmlImport` xi ON xie.`LocalId`=xi.`ItemId` AND xi.`AdapterId`=@adapter_id
+  LEFT JOIN `mwcatalog_product_entity_int` ints ON xie.`EntityId`=ints.`entity_id`
+WHERE
+  ints.`value_id` IS NULL AND
+  xie.`Active` = 1;
 
 -- insert ints: status
 INSERT INTO `mwcatalog_product_entity_int`
@@ -142,7 +169,8 @@ FROM
   INNER JOIN `XmlImport` xi ON xie.`LocalId`=xi.`ItemId` AND xi.`AdapterId`=@adapter_id
   LEFT JOIN `mwcatalog_product_entity_int` ints ON xie.`EntityId`=ints.`entity_id`
 WHERE
-  ints.`value_id` IS NULL;
+  ints.`value_id` IS NULL AND
+  xie.`Active` = 1;
 
 -- insert ints: tax class
 INSERT INTO `mwcatalog_product_entity_int`
@@ -152,13 +180,19 @@ SELECT
   85 AS `attribute_id`,
   0 AS `store_id`,
   xie.`EntityId` AS `entity_id`,
-  3810 AS `value`
+  CASE xi.`VAT`
+    WHEN 18 THEN 2
+    WHEN 8 THEN 6
+    WHEN 10 THEN 7
+    WHEN 1 THEN 8
+  END AS `value`
 FROM
   `XmlImportEntities` xie
   INNER JOIN `XmlImport` xi ON xie.`LocalId`=xi.`ItemId` AND xi.`AdapterId`=@adapter_id
   LEFT JOIN `mwcatalog_product_entity_int` ints ON xie.`EntityId`=ints.`entity_id`
 WHERE
-  ints.`value_id` IS NULL;
+  ints.`value_id` IS NULL AND
+  xie.`Active` = 1;
 
 -- insert ints: visibility
 INSERT INTO `mwcatalog_product_entity_int`
@@ -174,7 +208,8 @@ FROM
   INNER JOIN `XmlImport` xi ON xie.`LocalId`=xi.`ItemId` AND xi.`AdapterId`=@adapter_id
   LEFT JOIN `mwcatalog_product_entity_int` ints ON xie.`EntityId`=ints.`entity_id`
 WHERE
-  ints.`value_id` IS NULL;
+  ints.`value_id` IS NULL AND
+  xie.`Active` = 1;
 
 -- insert ints: brand
 INSERT INTO `mwcatalog_product_entity_int`
@@ -190,7 +225,8 @@ FROM
   INNER JOIN `XmlImport` xi ON xie.`LocalId`=xi.`ItemId` AND xi.`AdapterId`=@adapter_id
   LEFT JOIN `mwcatalog_product_entity_int` ints ON xie.`EntityId`=ints.`entity_id`
 WHERE
-  ints.`value_id` IS NULL;
+  ints.`value_id` IS NULL AND
+  xie.`Active` = 1;
 
 -- insert ints: category
 INSERT INTO `mwcatalog_product_entity_int`
@@ -206,7 +242,8 @@ FROM
   INNER JOIN `XmlImport` xi ON xie.`LocalId`=xi.`ItemId` AND xi.`AdapterId`=@adapter_id
   LEFT JOIN `mwcatalog_product_entity_int` ints ON xie.`EntityId`=ints.`entity_id`
 WHERE
-  ints.`value_id` IS NULL;
+  ints.`value_id` IS NULL AND
+  xie.`Active` = 1;
 
 -- insert ints: xml_updated
 INSERT INTO `mwcatalog_product_entity_int`
@@ -216,13 +253,14 @@ SELECT
   266 AS `attribute_id`,
   0 AS `store_id`,
   xie.`EntityId` AS `entity_id`,
-  6223 AS `value`
+  IF(xi.`Status` = 1, 6223, 6222) AS `value`
 FROM
   `XmlImportEntities` xie
   INNER JOIN `XmlImport` xi ON xie.`LocalId`=xi.`ItemId` AND xi.`AdapterId`=@adapter_id
   LEFT JOIN `mwcatalog_product_entity_int` ints ON xie.`EntityId`=ints.`entity_id`
 WHERE
-  ints.`value_id` IS NULL;
+  ints.`value_id` IS NULL AND
+  xie.`Active` = 1;
 
 -- update decimals
 UPDATE
@@ -235,7 +273,8 @@ SET
     WHEN 65 THEN xi.`DiscountedPrice`
   END
 WHERE
-  decimals.`attribute_id` IN (64, 65) AND decimals.`store_id` = 0;
+  decimals.`attribute_id` IN (64, 65) AND decimals.`store_id` = 0 AND
+  xie.`Active` = 1;
 
 -- insert decimals: price
 INSERT INTO `mwcatalog_product_entity_decimal`
@@ -251,7 +290,8 @@ FROM
   INNER JOIN `XmlImport` xi ON xie.`LocalId`=xi.`ItemId` AND xi.`AdapterId`=@adapter_id
   LEFT JOIN `mwcatalog_product_entity_decimal` decimals ON xie.`EntityId`=decimals.`entity_id`
 WHERE
-  decimals.`value_id` IS NULL;
+  decimals.`value_id` IS NULL AND
+  xie.`Active` = 1;
 
 -- insert decimals: discounted price
 INSERT INTO `mwcatalog_product_entity_decimal`
@@ -267,7 +307,8 @@ FROM
   INNER JOIN `XmlImport` xi ON xie.`LocalId`=xi.`ItemId` AND xi.`AdapterId`=@adapter_id
   LEFT JOIN `mwcatalog_product_entity_decimal` decimals ON xie.`EntityId`=decimals.`entity_id`
 WHERE
-  decimals.`value_id` IS NULL;
+  decimals.`value_id` IS NULL AND
+  xie.`Active` = 1;
 
 -- delete decimals: discounted price
 DELETE FROM `mwcatalog_product_entity_decimal`
@@ -283,7 +324,42 @@ SET
     WHEN 181 THEN xi.`RemoteBarcode`
   END
 WHERE
-  varchars.`attribute_id` IN (181) AND varchars.`store_id` = 0;
+  varchars.`attribute_id` IN (181) AND varchars.`store_id` = 0 AND
+  xie.`Active` = 1;
+
+-- insert varchars: name
+INSERT INTO `mwcatalog_product_entity_varchar`
+SELECT
+  NULL AS `value_id`,
+  4 AS `entity_type_id`,
+  60 AS `attribute_id`,
+  0 AS `store_id`,
+  xie.`EntityId` AS `entity_id`,
+  xi.`Name` AS `value`
+FROM
+  `XmlImportEntities` xie
+  INNER JOIN `XmlImport` xi ON xie.`LocalId`=xi.`ItemId` AND xi.`AdapterId`=@adapter_id
+  LEFT JOIN `mwcatalog_product_entity_varchar` varchars ON xie.`EntityId`=varchars.`entity_id`
+WHERE
+  varchars.`value_id` IS NULL AND
+  xie.`Active` = 1;
+
+-- insert varchars: description
+INSERT INTO `mwcatalog_product_entity_varchar`
+SELECT
+  NULL AS `value_id`,
+  4 AS `entity_type_id`,
+  61 AS `attribute_id`,
+  0 AS `store_id`,
+  xie.`EntityId` AS `entity_id`,
+  xi.`LongDescription` AS `value`
+FROM
+  `XmlImportEntities` xie
+  INNER JOIN `XmlImport` xi ON xie.`LocalId`=xi.`ItemId` AND xi.`AdapterId`=@adapter_id
+  LEFT JOIN `mwcatalog_product_entity_varchar` varchars ON xie.`EntityId`=varchars.`entity_id`
+WHERE
+  varchars.`value_id` IS NULL AND
+  xie.`Active` = 1;
 
 -- insert varchars: barcode
 INSERT INTO `mwcatalog_product_entity_varchar`
@@ -299,7 +375,8 @@ FROM
   INNER JOIN `XmlImport` xi ON xie.`LocalId`=xi.`ItemId` AND xi.`AdapterId`=@adapter_id
   LEFT JOIN `mwcatalog_product_entity_varchar` varchars ON xie.`EntityId`=varchars.`entity_id`
 WHERE
-  varchars.`value_id` IS NULL;
+  varchars.`value_id` IS NULL AND
+  xie.`Active` = 1;
 
 -- insert varchars: images
 INSERT INTO `mwcatalog_product_entity_varchar`
@@ -315,7 +392,8 @@ FROM
   INNER JOIN `XmlImport` xi ON xie.`LocalId`=xi.`ItemId` AND xi.`AdapterId`=@adapter_id
   LEFT JOIN `mwcatalog_product_entity_varchar` varchars ON xie.`EntityId`=varchars.`entity_id`
 WHERE
-  varchars.`value_id` IS NULL;
+  varchars.`value_id` IS NULL AND
+  xie.`Active` = 1;
 
 -- insert varchars: small images
 INSERT INTO `mwcatalog_product_entity_varchar`
@@ -331,7 +409,8 @@ FROM
   INNER JOIN `XmlImport` xi ON xie.`LocalId`=xi.`ItemId` AND xi.`AdapterId`=@adapter_id
   LEFT JOIN `mwcatalog_product_entity_varchar` varchars ON xie.`EntityId`=varchars.`entity_id`
 WHERE
-  varchars.`value_id` IS NULL;
+  varchars.`value_id` IS NULL AND
+  xie.`Active` = 1;
 
 -- insert varchars: thumbnails
 INSERT INTO `mwcatalog_product_entity_varchar`
@@ -347,7 +426,8 @@ FROM
   INNER JOIN `XmlImport` xi ON xie.`LocalId`=xi.`ItemId` AND xi.`AdapterId`=@adapter_id
   LEFT JOIN `mwcatalog_product_entity_varchar` varchars ON xie.`EntityId`=varchars.`entity_id`
 WHERE
-  varchars.`value_id` IS NULL;
+  varchars.`value_id` IS NULL AND
+  xie.`Active` = 1;
 
 -- insert varchars: image labels
 INSERT INTO `mwcatalog_product_entity_varchar`
@@ -363,7 +443,8 @@ FROM
   INNER JOIN `XmlImport` xi ON xie.`LocalId`=xi.`ItemId` AND xi.`AdapterId`=@adapter_id
   LEFT JOIN `mwcatalog_product_entity_varchar` varchars ON xie.`EntityId`=varchars.`entity_id`
 WHERE
-  varchars.`value_id` IS NULL;
+  varchars.`value_id` IS NULL AND
+  xie.`Active` = 1;
 
 -- insert varchars: small image labels
 INSERT INTO `mwcatalog_product_entity_varchar`
@@ -379,7 +460,8 @@ FROM
   INNER JOIN `XmlImport` xi ON xie.`LocalId`=xi.`ItemId` AND xi.`AdapterId`=@adapter_id
   LEFT JOIN `mwcatalog_product_entity_varchar` varchars ON xie.`EntityId`=varchars.`entity_id`
 WHERE
-  varchars.`value_id` IS NULL;
+  varchars.`value_id` IS NULL AND
+  xie.`Active` = 1;
 
 -- insert varchars: thumbnail labels
 INSERT INTO `mwcatalog_product_entity_varchar`
@@ -395,4 +477,5 @@ FROM
   INNER JOIN `XmlImport` xi ON xie.`LocalId`=xi.`ItemId` AND xi.`AdapterId`=@adapter_id
   LEFT JOIN `mwcatalog_product_entity_varchar` varchars ON xie.`EntityId`=varchars.`entity_id`
 WHERE
-  varchars.`value_id` IS NULL;
+  varchars.`value_id` IS NULL AND
+  xie.`Active` = 1;

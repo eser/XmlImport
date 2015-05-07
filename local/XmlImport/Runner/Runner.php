@@ -5,12 +5,15 @@ namespace XmlImport\Runner;
 use Exception;
 use PDO;
 use PDOException;
+use Monolog\Logger;
+use Monolog\Handler\StreamHandler;
 use XmlImport\Config\Config;
 use XmlImport\Helpers\MailHelper;
 
 class Runner
 {
     public $exitCode = 0;
+    public $logger;
     public $pdo;
     public $adapterInstances = array();
 
@@ -20,6 +23,12 @@ class Runner
 
     public function start()
     {
+        // create logger
+        $tLogFile = BASE_DIR . "runner.log";
+
+        $this->logger = new Logger("Runner");
+        $this->logger->pushHandler(new StreamHandler($tLogFile, Logger::DEBUG));
+
         // establish database connection
         try {
             $this->pdo = new PDO(
