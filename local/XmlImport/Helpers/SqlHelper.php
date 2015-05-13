@@ -26,4 +26,18 @@ class SqlHelper
 
         return $tQueries;
     }
+
+    public static function getUsedParameters($uSqlString, $uParameters)
+    {
+        $tFound = array();
+
+        foreach ($uParameters as $tKey => $tValue) {
+            if (stripos($uSqlString, $tKey) > -1)
+            {
+                $tFound[$tKey] = $tValue;
+            }
+        }
+
+        return $tFound;
+    }
 }

@@ -150,9 +150,10 @@ abstract class AdapterBase
         foreach ($tSqlStrings as $tSqlString) {
             $this->runner->logger->addDebug("SQL Query: {$tSqlString}");
 
+            $tUsedParameters = SqlHelper::getUsedParameters($tSqlString, $this->sqlParameters);
+
             $tQuery = $this->runner->pdo->prepare($tSqlString);
-            // TODO check which parameters are used in query
-            $tQuery->execute($this->sqlParameters);
+            $tQuery->execute($tUsedParameters);
 
             $tCountAffected = $tQuery->rowCount();
             $this->runner->logger->addDebug("SQL Query Result: {$tCountAffected} rows affected");
